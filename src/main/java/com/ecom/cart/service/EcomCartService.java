@@ -10,5 +10,5 @@ public interface EcomCartService {
 
     EcomCart updateCartProduct(Long cartItemId, UpdateCartRequest updateCartRequest);
 
-    void deleteCartProduct(Long cartItemId);
+    void deleteCartProduct(Long productId);
 }

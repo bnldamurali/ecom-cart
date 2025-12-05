@@ -3,9 +3,11 @@ package com.ecom.cart.service;
 import com.ecom.cart.dto.AddToCartRequest;
 import com.ecom.cart.dto.UpdateCartRequest;
 import com.ecom.cart.entity.EcomCart;
+import com.ecom.cart.exception.ProductNotFoundException;
 import com.ecom.cart.repository.EcomCartRepository;
-import org.junit.jupiter.api.Test;
+import com.ecom.cart.repository.EcomProductsRepository;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
@@ -13,79 +15,100 @@ import org.mockito.MockitoAnnotations;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-public class EcomCartServiceTest {
+class EcomCartServiceTest {
 
     @Mock
     private EcomCartRepository ecomCartRepository;
 
+    @Mock
+    private EcomProductsRepository ecomProductsRepository;
+
     @InjectMocks
-    private EcomCartService ecomCartService;
+    private EcomCartServiceImpl ecomCartService;
 
     @BeforeEach
-    public void setup() {
+    void setUp() {
         MockitoAnnotations.openMocks(this);
     }
 
     @Test
-    public void testAddProductToCart_Success() {
-        AddToCartRequest addToCartRequest = AddToCartRequest.builder()
-                .productId(1L)
-                .quantity(3)
-                .userId(10L)
-                .build();
-
-        EcomCart savedCart = EcomCart.builder()
-                .id(100L)
-                .userId(1L)
-                .productId(10L)
-                .quantity(3)
-                .build();
+    void testAddToCart_Success() {
+        AddToCartRequest request = new AddToCartRequest(1L, 10L, 2);
+        EcomCart savedCart = new EcomCart();
+        savedCart.setId(1L);
+        savedCart.setUserId(1L);
+        savedCart.setProductId(10L);
+        savedCart.setQuantity(2);
 
         when(ecomCartRepository.save(any(EcomCart.class))).thenReturn(savedCart);
+        when(ecomProductsRepository.existsById(anyLong())).thenReturn(true);
 
-        EcomCart result = ecomCartService.addToCart(addToCartRequest);
+        EcomCart result = ecomCartService.addToCart(request);
 
-        assertEquals(100L, result.getId());
+        assertNotNull(result);
+        assertEquals(1L, result.getId());
+        assertEquals(1L, result.getUserId());
+        assertEquals(10L, result.getProductId());
+        assertEquals(2, result.getQuantity());
+
         verify(ecomCartRepository, times(1)).save(any(EcomCart.class));
     }
 
     @Test
-    public void testUpdateProductQuantity_Success() {
-        Long cartId = 1L;
+    void testUpdateCartProduct_Success() {
+        UpdateCartRequest request = UpdateCartRequest.builder().quantity(5).build();
 
-        EcomCart existingCart = EcomCart.builder()
-                .id(cartId)
-                .userId(1L)
-                .productId(10L)
-                .quantity(2)
-                .build();
-        UpdateCartRequest updateCartRequest = UpdateCartRequest.builder()
-                .quantity(5)
-                .build();
+        EcomCart existingCart = new EcomCart();
+        existingCart.setId(1L);
+        existingCart.setProductId(10L);
+        existingCart.setUserId(1L);
+        existingCart.setQuantity(2);
 
-        when(ecomCartRepository.findById(cartId)).thenReturn(Optional.of(existingCart));
+        when(ecomCartRepository.findByProductId(10L)).thenReturn(Optional.of(existingCart));
+        when(ecomCartRepository.save(existingCart)).thenReturn(existingCart);
 
-        EcomCart updatedResult = ecomCartService.updateCartProduct(cartId, updateCartRequest);
+        EcomCart result = ecomCartService.updateCartProduct(10L, request);
 
-        assertEquals(5, updatedResult.getQuantity());
+        assertNotNull(result);
+        assertEquals(5, result.getQuantity());
+        verify(ecomCartRepository, times(1)).findByProductId(10L);
         verify(ecomCartRepository, times(1)).save(existingCart);
     }
 
     @Test
-    public void testDeleteProductFromCart_Success() {
-        EcomCart existing = EcomCart.builder()
-                .id(1L)
-                .userId(1L)
-                .productId(2L)
-                .quantity(3)
-                .build();
+    void testUpdateCartProduct_ProductNotFound() {
+        UpdateCartRequest request = UpdateCartRequest.builder().quantity(5).build();
 
-        when(ecomCartRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(ecomCartRepository.findByProductId(10L)).thenReturn(Optional.empty());
 
-        ecomCartService.deleteCartProduct(1L);
+        ProductNotFoundException exception = assertThrows(ProductNotFoundException.class,
+                () -> ecomCartService.updateCartProduct(10L, request));
 
-        verify(ecomCartRepository, times(1)).delete(existing);
+        assertEquals("Cart product with id 10 not found", exception.getMessage());
+        verify(ecomCartRepository, times(1)).findByProductId(10L);
+        verify(ecomCartRepository, never()).save(any());
+    }
+
+    @Test
+    void testDeleteCartProduct_Success() {
+        when(ecomCartRepository.deleteByProductId(10L)).thenReturn(1);
+
+        assertDoesNotThrow(() -> ecomCartService.deleteCartProduct(10L));
+
+        verify(ecomCartRepository, times(1)).deleteByProductId(10L);
+    }
+
+    @Test
+    void testDeleteCartProduct_NotFound() {
+        when(ecomCartRepository.deleteByProductId(10L)).thenReturn(0);
+
+        ProductNotFoundException exception = assertThrows(ProductNotFoundException.class,
+                () -> ecomCartService.deleteCartProduct(10L));
+
+        assertEquals("Cart product with id 10 not found", exception.getMessage());
+        verify(ecomCartRepository, times(1)).deleteByProductId(10L);
     }
 }
